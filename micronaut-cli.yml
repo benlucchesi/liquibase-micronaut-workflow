@@ -1,0 +1,5 @@
+profile: service
+defaultPackage: liquibaseworkflow
+---
+testFramework: spock
+sourceLanguage: groovy

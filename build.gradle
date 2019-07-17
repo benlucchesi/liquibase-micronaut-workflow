@@ -1,0 +1,129 @@
+
+// --features hibernate-gorm,jdbc-tomcat,groovy,jdbc-tomcat --lang groovy liquibaseworkflow
+
+plugins {
+    id "groovy"
+    id "com.github.johnrengelman.shadow" version "5.0.0"
+    id "application"
+
+    id 'org.liquibase.gradle' version '2.0.1'
+}
+
+
+
+version "0.1"
+group "liquibaseworkflow"
+
+ext {
+  gormVersion = '7.0.0.RELEASE'
+  h2Version = '1.4.196'
+  tomcatJdbcVersion = '8.5.28'
+}
+
+// sets the default changelog file value if none was set on commandline
+if( !project.ext.properties.containsKey('changeLogFile') ){
+  project.ext.properties.changeLogFile = ""
+}
+
+if( !project.ext.properties.runList ){
+  project.ext.runList = "none"
+}
+
+repositories {
+    mavenCentral()
+    maven { url "https://jcenter.bintray.com" }
+}
+
+configurations {
+    // for dependencies that are needed for development only
+    developmentOnly 
+}
+
+dependencies {
+    implementation enforcedPlatform("io.micronaut:micronaut-bom:$micronautVersion")
+    compileOnly enforcedPlatform("io.micronaut:micronaut-bom:$micronautVersion")
+    annotationProcessor enforcedPlatform("io.micronaut:micronaut-bom:$micronautVersion")
+    testAnnotationProcessor enforcedPlatform("io.micronaut:micronaut-bom:$micronautVersion")
+
+    compileOnly "io.micronaut:micronaut-inject-groovy"
+    implementation "io.micronaut:micronaut-runtime-groovy"
+    implementation "io.micronaut:micronaut-validation"
+    implementation "io.micronaut:micronaut-http-client"
+    implementation "io.micronaut.configuration:micronaut-jdbc-tomcat"
+
+    implementation "javax.annotation:javax.annotation-api"
+    runtimeOnly "ch.qos.logback:logback-classic:1.2.3"
+    runtimeOnly "com.h2database:h2"
+    runtimeOnly "org.apache.tomcat:tomcat-jdbc"
+    testImplementation("org.spockframework:spock-core") {
+        exclude group: "org.codehaus.groovy", module: "groovy-all"
+    }
+    testImplementation "io.micronaut:micronaut-inject-groovy"
+    testImplementation "io.micronaut.test:micronaut-test-spock"
+    testImplementation "io.micronaut.test:micronaut-test-junit5"
+    testRuntimeOnly "org.junit.vintage:junit-vintage-engine:5.5.0"
+
+    if (!gradle.startParameter.taskNames.contains("generatedb")) {
+      implementation "io.micronaut:micronaut-http-server-netty"
+    }
+
+    runtime 'com.h2database:h2'
+
+    // GORM and database dependencies
+    implementation "io.micronaut.configuration:micronaut-hibernate-validator"
+    implementation ( "io.micronaut.configuration:micronaut-hibernate-gorm" ){
+        exclude group: 'org.grails', module: 'grails-datastore-gorm-hibernate5'
+    }
+    compile "org.grails:grails-datastore-gorm-hibernate5:$gormVersion"
+
+    liquibaseRuntime 'org.liquibase:liquibase-core:3.6.1'
+    liquibaseRuntime 'org.liquibase:liquibase-groovy-dsl:2.0.1'
+    liquibaseRuntime "com.h2database:h2:$h2Version"
+}
+
+test.classpath += configurations.developmentOnly
+
+mainClassName = "liquibaseworkflow.Application"
+tasks.withType(GroovyCompile) {
+    groovyOptions.forkOptions.jvmArgs.add('-Dgroovy.parameters=true')
+}
+
+shadowJar {
+    mergeServiceFiles()
+}
+
+run.classpath += configurations.developmentOnly
+run.jvmArgs('-noverify', '-XX:TieredStopAtLevel=1', '-Dcom.sun.management.jmxremote')
+
+liquibase {
+  activities {
+    diffLocalDb {
+      changeLogFile project.ext.properties.changeLogFile 
+      url 'jdbc:h2:./developmentdb'
+      username 'sa'
+      password 'sa'
+
+      referenceUrl 'jdbc:h2:./generatedb'
+      referencePassword 'sa'
+      referenceUsername 'sa'
+    }
+
+    migrateLocalDb{
+      changeLogFile project.ext.properties.changeLogFile 
+      url 'jdbc:h2:./developmentdb'
+      username 'sa'
+      password 'sa'
+    }
+    none{
+    }
+  }
+  runList = project.ext.runList
+}
+
+// create temp db
+task generatedb(type: JavaExec) {
+  classpath = sourceSets.main.runtimeClasspath
+  main = "liquibaseworkflow.Application"
+  jvmArgs '-Dmicronaut.environments=generatedb'
+}
+
